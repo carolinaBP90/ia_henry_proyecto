@@ -1,0 +1,166 @@
+"""Centralized OpenAI access for all LLM interactions in the system."""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+
+from src.config import Settings, get_settings
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+class OpenAIClientError(RuntimeError):
+    """Raised when an OpenAI request fails after controlled retries."""
+
+
+class OpenAIClient:
+    """Centralized OpenAI client abstraction used by parser and agents.
+
+    This class prevents direct OpenAI coupling inside business components and
+    standardizes timeout/retry/error handling.
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        """Initialize model clients for vision and text tasks."""
+        self._settings = settings
+        self._vision_model = ChatOpenAI(
+            model=settings.openai_model_vision,
+            api_key=settings.openai_api_key,
+            temperature=0,
+            timeout=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
+        self._text_model = ChatOpenAI(
+            model=settings.openai_model_text,
+            api_key=settings.openai_api_key,
+            temperature=settings.openai_temperature,
+            timeout=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
+
+    def extract_text_from_image(self, image_base64: str, extraction_prompt: str) -> str:
+        """Extract faithful OCR text from an image via GPT-4o Vision.
+
+        Args:
+            image_base64: Raw base64 image payload.
+            extraction_prompt: OCR prompt with extraction constraints.
+
+        Returns:
+            The extracted document text.
+
+        Raises:
+            OpenAIClientError: When model execution fails.
+        """
+        try:
+            response = self._vision_model.invoke(
+                [
+                    SystemMessage(
+                        content=(
+                            "You are a legal OCR assistant. Return only extracted text, "
+                            "preserving line breaks and legal numbering."
+                        )
+                    ),
+                    HumanMessage(
+                        content=[
+                            {"type": "text", "text": extraction_prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{image_base64}"},
+                            },
+                        ]
+                    ),
+                ]
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise OpenAIClientError("Vision extraction failed") from exc
+
+        text = str(response.content).strip()
+        if not text:
+            raise OpenAIClientError("Vision extraction returned empty content")
+        return text
+
+    def invoke_text_task(self, system_prompt: str, user_prompt: str) -> str:
+        """Run a text-only task through LangChain prompt pipeline.
+
+        Args:
+            system_prompt: Role and behavior constraints.
+            user_prompt: Concrete task payload.
+
+        Returns:
+            String model output.
+
+        Raises:
+            OpenAIClientError: If invocation fails.
+        """
+        try:
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", system_prompt),
+                    ("human", user_prompt),
+                ]
+            )
+            chain = prompt | self._text_model | StrOutputParser()
+            output = chain.invoke({})
+        except Exception as exc:  # noqa: BLE001
+            raise OpenAIClientError("Text task failed") from exc
+
+        result = output.strip()
+        if not result:
+            raise OpenAIClientError("Text task returned empty content")
+        return result
+
+    def repair_json_payload(self, invalid_payload: str, validation_error: str) -> dict[str, Any]:
+        """Repair a JSON payload to satisfy required output schema.
+
+        Args:
+            invalid_payload: Original non-valid JSON content.
+            validation_error: Validator error string to guide correction.
+
+        Returns:
+            Repaired JSON dictionary.
+
+        Raises:
+            OpenAIClientError: If repaired output is still not valid JSON.
+        """
+        system_prompt = (
+            "You are a strict JSON repair assistant. "
+            "You MUST return valid JSON only, with no markdown fences."
+        )
+        user_prompt = (
+            "Repair the following JSON so that it matches this schema exactly:\n"
+            "{\n"
+            '  "sections_changed": ["string"],\n'
+            '  "topics_touched": ["string"],\n'
+            '  "summary_of_the_change": "string"\n'
+            "}\n\n"
+            "Validation errors:\n"
+            f"{validation_error}\n\n"
+            "Invalid JSON:\n"
+            f"{invalid_payload}"
+        )
+
+        repaired_text = self.invoke_text_task(system_prompt=system_prompt, user_prompt=user_prompt)
+        try:
+            return json.loads(repaired_text)
+        except json.JSONDecodeError as exc:
+            LOGGER.warning("JSON repair output was invalid JSON")
+            raise OpenAIClientError("JSON repair did not return valid JSON") from exc
+
+
+_OPENAI_CLIENT: OpenAIClient | None = None
+
+
+def get_openai_client() -> OpenAIClient:
+    """Return a lazily initialized singleton OpenAI client."""
+    global _OPENAI_CLIENT
+    if _OPENAI_CLIENT is None:
+        _OPENAI_CLIENT = OpenAIClient(settings=get_settings())
+    return _OPENAI_CLIENT
