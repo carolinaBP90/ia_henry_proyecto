@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IA Henry - Frontend Simple</title>
+  <style>
+    :root {
+      --bg: #f3f5f8;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #64748b;
+      --accent: #0f766e;
+      --accent-soft: #ccfbf1;
+      --border: #dbe3ea;
+      --danger: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 0% 0%, #dff7f3, transparent 40%),
+        radial-gradient(circle at 100% 100%, #e6edf5, transparent 45%),
+        var(--bg);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: min(920px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 24px;
+      background: linear-gradient(120deg, #0f766e, #155e75);
+      color: #f8fafc;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+
+    .header p {
+      margin: 8px 0 0;
+      color: #ccfbf1;
+      font-size: 0.95rem;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      background: #f8fafc;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    select,
+    textarea,
+    button,
+    input {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .actions {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.08s ease, opacity 0.2s ease;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .secondary {
+      background: var(--accent-soft);
+      color: #115e59;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-height: 22px;
+    }
+
+    .status.error {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b1220;
+      color: #d6e1ff;
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 280px;
+      overflow: auto;
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 900px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <section class="header">
+      <h1>Interfaz Simple del Pipeline</h1>
+      <p>Permite enviar solicitudes a <strong>POST /pipeline/process</strong> sin usar Swagger.</p>
+    </section>
+
+    <section class="content">
+      <form id="pipelineForm" class="panel">
+        <label for="sourceType">source_type</label>
+        <select id="sourceType" name="sourceType">
+          <option value="text">text</option>
+          <option value="url">url</option>
+          <option value="file">file</option>
+        </select>
+
+        <label for="sourceValue" style="margin-top: 12px;">source_value</label>
+        <textarea id="sourceValue" name="sourceValue" placeholder="Escribe texto, URL o ruta de archivo...">Texto de prueba para el pipeline.</textarea>
+
+        <label for="metadata" style="margin-top: 12px;">metadata (JSON)</label>
+        <textarea id="metadata" name="metadata">{
+  "origen": "frontend_simple",
+  "fecha": "2026-04-03"
+}</textarea>
+        <p class="hint">Si no necesitas metadata, deja {}.</p>
+
+        <div class="actions">
+          <button class="primary" type="submit">Procesar</button>
+          <button class="secondary" type="button" id="loadExample">Cargar ejemplo URL</button>
+        </div>
+        <p id="status" class="status">Listo para enviar.</p>
+      </form>
+
+      <section class="panel">
+        <label>Respuesta</label>
+        <pre id="result">{
+  "info": "La respuesta aparecerá aquí"
+}</pre>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("pipelineForm");
+    const sourceType = document.getElementById("sourceType");
+    const sourceValue = document.getElementById("sourceValue");
+    const metadata = document.getElementById("metadata");
+    const statusNode = document.getElementById("status");
+    const resultNode = document.getElementById("result");
+    const loadExampleBtn = document.getElementById("loadExample");
+
+    function setStatus(message, isError = false) {
+      statusNode.textContent = message;
+      statusNode.classList.toggle("error", isError);
+    }
+
+    loadExampleBtn.addEventListener("click", () => {
+      sourceType.value = "url";
+      sourceValue.value = "https://example.com/articulo-prueba";
+      metadata.value = JSON.stringify({ origen: "frontend_simple", modo: "demo_url" }, null, 2);
+      setStatus("Ejemplo URL cargado.");
+    });
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      let metadataObj;
+      try {
+        metadataObj = JSON.parse(metadata.value.trim() || "{}");
+      } catch {
+        setStatus("metadata debe ser JSON valido.", true);
+        return;
+      }
+
+      const payload = {
+        source_type: sourceType.value,
+        source_value: sourceValue.value.trim(),
+        metadata: metadataObj
+      };
+
+      if (!payload.source_value) {
+        setStatus("source_value es obligatorio.", true);
+        return;
+      }
+
+      setStatus("Procesando solicitud...");
+      resultNode.textContent = "Esperando respuesta...";
+
+      try {
+        const response = await fetch("/pipeline/process", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setStatus(`Error HTTP ${response.status}.`, true);
+          resultNode.textContent = JSON.stringify(data, null, 2);
+          return;
+        }
+
+        setStatus("Solicitud procesada correctamente.");
+        resultNode.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        setStatus("No se pudo conectar con la API.", true);
+        resultNode.textContent = JSON.stringify({ error: String(error) }, null, 2);
+      }
+    });
+  </script>
+</body>
+</html>

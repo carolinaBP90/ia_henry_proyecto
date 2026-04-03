@@ -34,6 +34,7 @@ uvicorn src.main:app --reload
 Swagger:
 
 - http://127.0.0.1:8000/docs
+- Frontend simple: http://127.0.0.1:8000/
 
 ## Ejecutar con Docker Compose
 
