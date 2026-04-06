@@ -183,6 +183,7 @@ Exponer el sistema hacia el exterior mediante una API.
 
 - `GET /health`
 - `POST /pipeline/process`
+- `POST /pipeline/process-image` (OCR de imagenes escaneadas)
 
 **Archivos clave:**
 
@@ -283,6 +284,16 @@ Elegi tecnologias que hoy son muy relevantes en el ecosistema de IA aplicada. Py
 **Que decir:**
 
 Con un request muy simple, el sistema ya puede inferir que la intencion del usuario esta orientada a un resumen y seleccionar el agente correspondiente. Esto demuestra que el pipeline no solo transporta datos, sino que aplica logica de negocio orientada a IA.
+
+**Demo adicional OCR:**
+
+- Endpoint: `POST /pipeline/process-image`
+- Entrada: archivo de imagen escaneada + metadata
+- Salida: mismo contrato de respuesta del pipeline (`request_id`, `route`, `strategy`, `output`)
+
+**Que decir:**
+
+Esta extension permite usar el sistema con documentos reales en imagen. Primero se extrae texto con vision (OCR), luego ese texto entra al pipeline por las mismas capas, lo que mantiene consistencia arquitectonica.
 
 ---
 

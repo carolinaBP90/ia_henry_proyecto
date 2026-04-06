@@ -134,8 +134,8 @@ TIMING  | ACCION                        | ARCHIVO / COMANDO
         |                               |
 24-32   | DEMO EN VIVO:                 | Browser: Swagger
         |  - Request 1 (Resumen)        | Payload: ver PAYLOADS en CHECKLIST
-        |  - Request 2 (URL)            | 
-        |  - Request 3 (Q&A)            |
+        |  - Request 2 (OCR Imagen)     | POST /pipeline/process-image
+        |  - Request 3 (Q&A)            | POST /pipeline/process
         |                               |
 32-36   | Volver a VS Code              | VS Code: explicar 5 decisiones
         | Explicar decisiones           |
@@ -200,7 +200,7 @@ TIMING  | ACCION                        | ARCHIVO / COMANDO
 pip list | findstr fastapi
 
 # Si falta, instala:
-pip install fastapi uvicorn
+pip install -r requirements.txt
 
 # Intenta de nuevo:
 uvicorn src.main:app --reload

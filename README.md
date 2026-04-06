@@ -22,6 +22,27 @@ Proyecto base generado desde el diagrama de arquitectura (capas: Input, Ingestio
 6. Se persisten eventos y documentos en stores en memoria (listos para cambiar a Redis/DB/Vector DB).
 7. API devuelve salida estructurada para capa cliente.
 
+## OCR de imagenes escaneadas
+
+La app ahora soporta envio directo de imagenes escaneadas (JPG/PNG/WebP) para OCR con GPT-4o Vision.
+
+- Endpoint nuevo: `POST /pipeline/process-image`
+- Tipo de request: `multipart/form-data`
+- Campos:
+	- `file`: archivo de imagen
+	- `metadata`: JSON como string (opcional, default `{}`)
+
+Requisito: definir `OPENAI_API_KEY` en entorno o en `.env`.
+
+Ejemplo PowerShell:
+
+```powershell
+$env:OPENAI_API_KEY = "tu_api_key"
+curl.exe -X POST "http://127.0.0.1:8000/pipeline/process-image" `
+	-F "file=@C:/ruta/documento_escaneado.png" `
+	-F "metadata={\"origen\":\"demo\"}"
+```
+
 ## Ejecutar local
 
 ```bash
@@ -35,6 +56,8 @@ Swagger:
 
 - http://127.0.0.1:8000/docs
 - Frontend simple: http://127.0.0.1:8000/
+
+En el frontend simple puedes elegir `source_type = image` y subir una imagen.
 
 ## Ejecutar con Docker Compose
 

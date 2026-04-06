@@ -177,10 +177,19 @@
           <option value="text">text</option>
           <option value="url">url</option>
           <option value="file">file</option>
+          <option value="image">image</option>
         </select>
 
-        <label for="sourceValue" style="margin-top: 12px;">source_value</label>
-        <textarea id="sourceValue" name="sourceValue" placeholder="Escribe texto, URL o ruta de archivo...">Texto de prueba para el pipeline.</textarea>
+        <div id="sourceValueGroup">
+          <label for="sourceValue" style="margin-top: 12px;">source_value</label>
+          <textarea id="sourceValue" name="sourceValue" placeholder="Escribe texto, URL o ruta de archivo...">Texto de prueba para el pipeline.</textarea>
+        </div>
+
+        <div id="imageGroup" style="display: none; margin-top: 12px;">
+          <label for="imageFile">imagen escaneada</label>
+          <input id="imageFile" name="imageFile" type="file" accept="image/*">
+          <p class="hint">Se enviara a <strong>POST /pipeline/process-image</strong>.</p>
+        </div>
 
         <label for="metadata" style="margin-top: 12px;">metadata (JSON)</label>
         <textarea id="metadata" name="metadata">{
@@ -209,6 +218,9 @@
     const form = document.getElementById("pipelineForm");
     const sourceType = document.getElementById("sourceType");
     const sourceValue = document.getElementById("sourceValue");
+    const sourceValueGroup = document.getElementById("sourceValueGroup");
+    const imageGroup = document.getElementById("imageGroup");
+    const imageFile = document.getElementById("imageFile");
     const metadata = document.getElementById("metadata");
     const statusNode = document.getElementById("status");
     const resultNode = document.getElementById("result");
@@ -218,6 +230,17 @@
       statusNode.textContent = message;
       statusNode.classList.toggle("error", isError);
     }
+
+    function syncSourceMode() {
+      const isImage = sourceType.value === "image";
+      sourceValueGroup.style.display = isImage ? "none" : "block";
+      imageGroup.style.display = isImage ? "block" : "none";
+      if (isImage) {
+        setStatus("Selecciona una imagen escaneada para procesar OCR.");
+      }
+    }
+
+    sourceType.addEventListener("change", syncSourceMode);
 
     loadExampleBtn.addEventListener("click", () => {
       sourceType.value = "url";
@@ -237,28 +260,44 @@
         return;
       }
 
-      const payload = {
-        source_type: sourceType.value,
-        source_value: sourceValue.value.trim(),
-        metadata: metadataObj
-      };
-
-      if (!payload.source_value) {
-        setStatus("source_value es obligatorio.", true);
-        return;
-      }
-
       setStatus("Procesando solicitud...");
       resultNode.textContent = "Esperando respuesta...";
 
       try {
-        const response = await fetch("/pipeline/process", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
+        let response;
+        if (sourceType.value === "image") {
+          if (!imageFile.files || imageFile.files.length === 0) {
+            setStatus("Debes adjuntar una imagen.", true);
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append("file", imageFile.files[0]);
+          formData.append("metadata", JSON.stringify(metadataObj));
+          response = await fetch("/pipeline/process-image", {
+            method: "POST",
+            body: formData
+          });
+        } else {
+          const payload = {
+            source_type: sourceType.value,
+            source_value: sourceValue.value.trim(),
+            metadata: metadataObj
+          };
+
+          if (!payload.source_value) {
+            setStatus("source_value es obligatorio.", true);
+            return;
+          }
+
+          response = await fetch("/pipeline/process", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+          });
+        }
 
         const data = await response.json();
 
@@ -275,6 +314,8 @@
         resultNode.textContent = JSON.stringify({ error: String(error) }, null, 2);
       }
     });
+
+    syncSourceMode();
   </script>
 </body>
 </html>

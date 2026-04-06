@@ -77,7 +77,8 @@ Tener estas pestanas abiertas:
 - [ ] Esperar a que API este lista
 - [ ] Abrir navegador: http://127.0.0.1:8000/docs
 - [ ] Primer request: texto con "resumen" - analizar respuesta
-- [ ] Segundo request: URL source_type - mostrar diferencia
+- [ ] Segundo request: `POST /pipeline/process-image` con imagen escaneada
+- [ ] Mostrar que OCR + pipeline devuelven `request_id`, `route`, `strategy`, `output`
 - [ ] OPCIONAL: pytest -v (si sobra tiempo)
 - [ ] Temporizado: 10 minutos
 
@@ -128,6 +129,15 @@ Tener estas pestanas abiertas:
 ```
 
 **Esperado:** El sistema simula descarga de URL
+
+### Request 3: Imagen escaneada (Swagger)
+
+Usar endpoint `POST /pipeline/process-image`:
+
+- `file`: selecciona una imagen JPG/PNG escaneada
+- `metadata`: `{"author":"carolina","tipo":"ocr_demo"}`
+
+**Esperado:** El sistema extrae texto OCR y ejecuta el pipeline normal.
 
 ### Payload 3: Texto Corto (Q&A)
 ```json
