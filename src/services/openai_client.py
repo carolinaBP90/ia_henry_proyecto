@@ -31,6 +31,7 @@ class OpenAIClient:
     def __init__(self, settings: Settings) -> None:
         """Initialize model clients for vision and text tasks."""
         self._settings = settings
+        self._last_call_metadata: dict[str, Any] = {}
         self._vision_model = ChatOpenAI(
             model=settings.openai_model_vision,
             api_key=settings.openai_api_key,
@@ -82,6 +83,13 @@ class OpenAIClient:
         except Exception as exc:  # noqa: BLE001
             raise OpenAIClientError("Vision extraction failed") from exc
 
+        self._last_call_metadata = {
+            "task": "vision_extraction",
+            "model": self._settings.openai_model_vision,
+            "usage": getattr(response, "usage_metadata", None),
+            "response_metadata": getattr(response, "response_metadata", None),
+        }
+
         text = str(response.content).strip()
         if not text:
             raise OpenAIClientError("Vision extraction returned empty content")
@@ -107,15 +115,27 @@ class OpenAIClient:
                     ("human", user_prompt),
                 ]
             )
-            chain = prompt | self._text_model | StrOutputParser()
-            output = chain.invoke({})
+            messages = prompt.format_messages()
+            response = self._text_model.invoke(messages)
+            output = StrOutputParser().invoke(response)
         except Exception as exc:  # noqa: BLE001
             raise OpenAIClientError("Text task failed") from exc
+
+        self._last_call_metadata = {
+            "task": "text_task",
+            "model": self._settings.openai_model_text,
+            "usage": getattr(response, "usage_metadata", None),
+            "response_metadata": getattr(response, "response_metadata", None),
+        }
 
         result = output.strip()
         if not result:
             raise OpenAIClientError("Text task returned empty content")
         return result
+
+    def get_last_call_metadata(self) -> dict[str, Any]:
+        """Return best-effort metadata for the latest model invocation."""
+        return dict(self._last_call_metadata)
 
     def repair_json_payload(self, invalid_payload: str, validation_error: str) -> dict[str, Any]:
         """Repair a JSON payload to satisfy required output schema.

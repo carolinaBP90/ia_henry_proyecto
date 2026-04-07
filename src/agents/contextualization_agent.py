@@ -25,6 +25,7 @@ class ContextualizationAgent:
         system_prompt = (
             "You are a senior legal document analyst. "
             "Produce rigorous structural context to enable downstream legal diff extraction. "
+            "Do NOT extract or summarize changes yet. "
             "Be precise, avoid speculation, and mark uncertainty explicitly."
         )
 
@@ -36,6 +37,9 @@ class ContextualizationAgent:
             "3) LEGAL_ENTITIES: parties, obligations, dates, amounts, penalties\n"
             "4) CROSS_REFERENCES: references affected by the amendment\n"
             "5) AMBIGUITIES: potential OCR or semantic ambiguities\n\n"
+            "Important constraints:\n"
+            "- This agent only builds context and alignment.\n"
+            "- Do not classify additions/deletions/modifications in this step.\n\n"
             "Output plain text only. Keep each section concise but complete.\n\n"
             "ORIGINAL:\n"
             f"{original_text}\n\n"

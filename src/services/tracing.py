@@ -77,6 +77,8 @@ class TracingService:
         trace_handle: TraceHandle,
         name: str,
         input_data: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+        output_data: dict[str, Any] | None = None,
     ) -> Generator[Any | None, None, None]:
         """Create a child span under a root trace.
 
@@ -86,7 +88,7 @@ class TracingService:
 
         if self._enabled and trace_handle.trace_obj is not None:
             try:
-                span_obj = trace_handle.trace_obj.span(name=name, input=input_data)
+                span_obj = trace_handle.trace_obj.span(name=name, input=input_data, metadata=metadata)
             except Exception:  # noqa: BLE001
                 LOGGER.exception("Failed to create Langfuse span: %s", name)
                 span_obj = None
@@ -94,10 +96,12 @@ class TracingService:
         try:
             yield span_obj
         except Exception as exc:  # noqa: BLE001
-            self._safe_span_end(span_obj, level="ERROR", output={"error": str(exc)})
+            error_output = dict(output_data or {})
+            error_output["error"] = str(exc)
+            self._safe_span_end(span_obj, level="ERROR", output=error_output)
             raise
         else:
-            self._safe_span_end(span_obj, level="DEFAULT", output={"status": "ok"})
+            self._safe_span_end(span_obj, level="DEFAULT", output=output_data or {"status": "ok"})
 
     def _safe_span_end(self, span_obj: Any | None, level: str, output: Any) -> None:
         """End a span safely regardless of SDK version differences."""

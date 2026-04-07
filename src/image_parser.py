@@ -20,6 +20,35 @@ Extraction rules:
 """.strip()
 
 
+def validate_contract_image_path(path: str) -> Path:
+    """Validate that an image path exists and contains bytes.
+
+    Args:
+        path: Filesystem path to image file.
+
+    Returns:
+        Normalized Path object.
+
+    Raises:
+        FileNotFoundError: If the image path does not exist.
+        ValueError: If the file is empty.
+    """
+    image_path = Path(path)
+    if not image_path.exists() or not image_path.is_file():
+        raise FileNotFoundError(f"Image not found: {path}")
+
+    image_bytes = image_path.read_bytes()
+    if not image_bytes:
+        raise ValueError(f"Image file is empty: {path}")
+    return image_path
+
+
+def encode_contract_image_to_base64(image_path: Path) -> str:
+    """Encode a contract image to base64 for multimodal API calls."""
+    image_bytes = image_path.read_bytes()
+    return base64.b64encode(image_bytes).decode("utf-8")
+
+
 def parse_contract_image(path: str) -> str:
     """Parse a legal contract image and return extracted OCR text.
 
@@ -34,14 +63,7 @@ def parse_contract_image(path: str) -> str:
         ValueError: If the file is empty.
         OpenAIClientError: If model extraction fails.
     """
-    image_path = Path(path)
-    if not image_path.exists() or not image_path.is_file():
-        raise FileNotFoundError(f"Image not found: {path}")
-
-    image_bytes = image_path.read_bytes()
-    if not image_bytes:
-        raise ValueError(f"Image file is empty: {path}")
-
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+    image_path = validate_contract_image_path(path)
+    image_base64 = encode_contract_image_to_base64(image_path)
     client = get_openai_client()
     return client.extract_text_from_image(image_base64=image_base64, extraction_prompt=OCR_PROMPT)

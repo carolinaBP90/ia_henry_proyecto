@@ -11,6 +11,12 @@ Abre PowerShell en la carpeta del proyecto y copia/pega esto:
 # 2. Verificar que pip install funciono
 pip list | findstr fastapi
 
+# 2.1 Variables necesarias para demo principal
+$env:OPENAI_API_KEY = "tu_openai_key"
+$env:LANGFUSE_ENABLED = "true"
+$env:LANGFUSE_PUBLIC_KEY = "tu_public_key"
+$env:LANGFUSE_SECRET_KEY = "tu_secret_key"
+
 # 3. Abrir VS Code con todas las pestanas
 code .
 
@@ -28,6 +34,12 @@ source .venv/bin/activate
 
 # 2. Verificar que pip install funciono
 pip list | grep fastapi
+
+# 2.1 Variables necesarias para demo principal
+export OPENAI_API_KEY="tu_openai_key"
+export LANGFUSE_ENABLED="true"
+export LANGFUSE_PUBLIC_KEY="tu_public_key"
+export LANGFUSE_SECRET_KEY="tu_secret_key"
 
 # 3. Abrir VS Code
 code .
@@ -54,6 +66,11 @@ Abre una terminal adicional y ten lista para copiar/pegar:
 uvicorn src.main:app --reload
 ```
 
+### Paso 2.1: Preparar comando principal (CLI)
+```bash
+python -m src.main "C:/ruta/contrato_original.png" "C:/ruta/adenda.png" --output-file resultado.json
+```
+
 ### Paso 3: Abrir navegador en tab sin cargar
 - Chrome/Firefox
 - URL lista: http://127.0.0.1:8000/docs
@@ -72,16 +89,13 @@ code .
 TAB 1: README.md
 TAB 2: DIAGRAMA_VISUAL_FLUJO.md (para referencia)
 TAB 3: src/main.py
-TAB 4: src/api/routes/pipeline.py
-TAB 5: src/api/routes/health.py
-TAB 6: src/schemas/pipeline.py
-TAB 7: src/layers/orchestration_layer/engine.py
-TAB 8: src/layers/input_layer/collector.py
-TAB 9: src/layers/ingestion_layer/ingestor.py
-TAB 10: src/layers/ai_strategy_layer/agents.py
-TAB 11: src/layers/processing_router_layer/router.py
-TAB 12: src/storage/queue.py
-TAB 13: src/storage/repositories.py
+TAB 4: src/image_parser.py
+TAB 5: src/agents/contextualization_agent.py
+TAB 6: src/agents/extraction_agent.py
+TAB 7: src/models.py
+TAB 8: src/services/tracing.py
+TAB 9: src/api/routes/pipeline.py
+TAB 10: src/api/routes/health.py
 TAB 14: requirements.txt
 TAB 15: docker-compose.yml
 TAB 16: Dockerfile
@@ -90,11 +104,11 @@ TAB 16: Dockerfile
 O mas simple: Abre solo estos archivos principales:
 ```
 - src/main.py
-- src/schemas/pipeline.py
-- src/layers/orchestration_layer/engine.py
-- src/layers/input_layer/collector.py
-- src/layers/ingestion_layer/ingestor.py
-- src/layers/ai_strategy_layer/agents.py
+- src/image_parser.py
+- src/agents/contextualization_agent.py
+- src/agents/extraction_agent.py
+- src/models.py
+- src/services/tracing.py
 - docker-compose.yml
 - requirements.txt
 ```
@@ -121,21 +135,20 @@ TIMING  | ACCION                        | ARCHIVO / COMANDO
 14-15   | Explicar por qué cada tech    | (Hablado)
         |                               |
 15-22   | Mostrar flujo de datos:       | 
-        |  - engine.py paso a paso      | VS Code: engine.py
-        |  - collector.py                | VS Code: collector.py
-        |  - ingestor.py                | VS Code: ingestor.py
-        |  - agents.py                  | VS Code: agents.py
-        |  - schemas                    | VS Code: pipeline.py
+        |  - main.py paso a paso        | VS Code: main.py
+        |  - image_parser.py            | VS Code: image_parser.py
+        |  - contextualization_agent.py | VS Code: agents/contextualization_agent.py
+        |  - extraction_agent.py        | VS Code: agents/extraction_agent.py
+        |  - models.py                  | VS Code: models.py
         |                               |
-22 min  | INICIAR API EN TERMINAL       | Terminal: uvicorn src.main:app --reload
+22 min  | DEMO CLI PRINCIPAL            | Terminal: python -m src.main <img1> <img2>
         | (mientras trabajas)           |
         |                               |
-24 min  | Abrir navegador               | http://127.0.0.1:8000/docs
+24 min  | Abrir resultado JSON          | resultado.json
         |                               |
 24-32   | DEMO EN VIVO:                 | Browser: Swagger
-        |  - Request 1 (Resumen)        | Payload: ver PAYLOADS en CHECKLIST
-        |  - Request 2 (OCR Imagen)     | POST /pipeline/process-image
-        |  - Request 3 (Q&A)            | POST /pipeline/process
+        |  - Mostrar spans Langfuse     | Dashboard Langfuse
+        |  - API opcional (si hay tiempo)| POST /pipeline/process-image
         |                               |
 32-36   | Volver a VS Code              | VS Code: explicar 5 decisiones
         | Explicar decisiones           |
@@ -151,29 +164,29 @@ TIMING  | ACCION                        | ARCHIVO / COMANDO
 
 ### Si te piden mostrar el código rapido, en este orden:
 
-1. **engine.py** (5 min)
-   - Es el corazón, muestra el flujo completo
-   - Path: `src/layers/orchestration_layer/engine.py`
+1. **main.py** (5 min)
+        - Es el corazón, muestra el flujo completo contractual
+        - Path: `src/main.py`
 
-2. **pipeline.py** (2 min)
-   - Esquemas Pydantic, validacion
-   - Path: `src/schemas/pipeline.py`
+2. **image_parser.py** (2 min)
+        - OCR multimodal + validaciones de imagen
+        - Path: `src/image_parser.py`
 
-3. **collector.py** (1 min)
-   - Simpe, entrada
-   - Path: `src/layers/input_layer/collector.py`
+3. **contextualization_agent.py** (2 min)
+        - Agente 1, mapa contextual
+        - Path: `src/agents/contextualization_agent.py`
 
-4. **ingestor.py** (1 min)
-   - Chunking basico
-   - Path: `src/layers/ingestion_layer/ingestor.py`
+4. **extraction_agent.py** (2 min)
+        - Agente 2, JSON de cambios
+        - Path: `src/agents/extraction_agent.py`
 
-5. **agents.py** (1 min)
-   - Estrategia simple
-   - Path: `src/layers/ai_strategy_layer/agents.py`
+5. **models.py** (1 min)
+        - Validacion ContractChangeOutput
+        - Path: `src/models.py`
 
-6. **main.py** (1 min)
-   - FastAPI setup
-   - Path: `src/main.py`
+6. **tracing.py** (1 min)
+        - Trazabilidad Langfuse por spans
+        - Path: `src/services/tracing.py`
 
 ---
 
@@ -181,10 +194,10 @@ TIMING  | ACCION                        | ARCHIVO / COMANDO
 
 ```
 ⬜ Terminal 1: `cd proyecto && .venv\Scripts\activate`
-⬜ Terminal 1: `uvicorn src.main:app --reload` (INICIAR)
+⬜ Terminal 1: `python -m src.main <img_original> <img_adenda> --output-file resultado.json`
 ⬜ Esperar: "Uvicorn running on http://127.0.0.1:8000"
 ⬜ VS Code: abierto con archivos lista
-⬜ Browser: pestaña http://127.0.0.1:8000/docs lista (sin cargar)
+⬜ Browser: dashboard Langfuse abierto
 ⬜ PNG del diagrama visible o a 1 clic
 ⬜ Este archivo (QUICK_LAUNCH) abierto como referencia
 ✅ LISTO PARA PRESENTAR

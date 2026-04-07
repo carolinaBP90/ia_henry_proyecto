@@ -4,13 +4,19 @@
 
 ### 1. Instalacion y Dependencias
 ```bash
-cd "c:\Users\Carolina\Documents\IA Henry Proyecto"
+cd "c:\Users\Carolina\ia_henry_proyecto"
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 - [ ] Instalar completado sin errores
 - [ ] Venv activado
+
+### 1.1 Variables de entorno para demo real
+- [ ] OPENAI_API_KEY cargada
+- [ ] LANGFUSE_ENABLED=true
+- [ ] LANGFUSE_PUBLIC_KEY cargada
+- [ ] LANGFUSE_SECRET_KEY cargada
 
 ### 2. Terminal Preparada
 ```bash
@@ -25,11 +31,12 @@ code .
 ```
 Tener estas pestanas abiertas:
 - [ ] README.md
-- [ ] src/layers/orchestration_layer/engine.py
-- [ ] src/schemas/pipeline.py
-- [ ] src/layers/input_layer/collector.py
-- [ ] src/layers/ingestion_layer/ingestor.py
-- [ ] src/layers/ai_strategy_layer/agents.py
+- [ ] src/main.py
+- [ ] src/image_parser.py
+- [ ] src/agents/contextualization_agent.py
+- [ ] src/agents/extraction_agent.py
+- [ ] src/models.py
+- [ ] src/services/tracing.py
 - [ ] requirements.txt
 - [ ] docker-compose.yml
 
@@ -64,22 +71,20 @@ Tener estas pestanas abiertas:
 - [ ] Temporizado: 4 minutos
 
 ### SEGMENTO 4 (15-22 min): Flujo de Datos
-- [ ] Abrir engine.py
-- [ ] Seguir run_pipeline paso a paso (6 pasos)
-- [ ] Abrir collector.py (breve)
-- [ ] Abrir ingestor.py (breve)
-- [ ] Abrir agents.py (breve)
-- [ ] Mostrar pipeline.py - esquemas Pydantic
+- [ ] Abrir src/main.py
+- [ ] Seguir run_contract_analysis paso a paso
+- [ ] Mostrar parse_original_contract y parse_amendment_contract
+- [ ] Mostrar llamados a ContextualizationAgent y ExtractionAgent
+- [ ] Mostrar validacion ContractChangeOutput.model_validate
+- [ ] Mostrar spans contract-analysis en codigo
 - [ ] Temporizado: 7 minutos
 
 ### SEGMENTO 5 (22-32 min): DEMO EN VIVO (MAS IMPORTANTE)
-- [ ] En terminal: `uvicorn src.main:app --reload`
-- [ ] Esperar a que API este lista
-- [ ] Abrir navegador: http://127.0.0.1:8000/docs
-- [ ] Primer request: texto con "resumen" - analizar respuesta
-- [ ] Segundo request: `POST /pipeline/process-image` con imagen escaneada
-- [ ] Mostrar que OCR + pipeline devuelven `request_id`, `route`, `strategy`, `output`
-- [ ] OPCIONAL: pytest -v (si sobra tiempo)
+- [ ] Demo CLI principal:
+- [ ] Ejecutar: `python -m src.main "<path_original>" "<path_adenda>" --output-file resultado.json`
+- [ ] Mostrar JSON final (sections_changed, topics_touched, summary_of_the_change)
+- [ ] Mostrar en Langfuse los 4 spans principales
+- [ ] Demo API opcional: `uvicorn src.main:app --reload` y usar Swagger
 - [ ] Temporizado: 10 minutos
 
 ### SEGMENTO 6 (32-36 min): Decisiones de Diseño
@@ -89,9 +94,9 @@ Tener estas pestanas abiertas:
 - [ ] Temporizado: 4 minutos
 
 ### SEGMENTO 7 (36-39 min): Limitaciones y Proximos Pasos
-- [ ] Ser honesto: "No hay LLM real, almacenamiento en memoria"
-- [ ] Explicar: "Pero la arquitectura ya lo permite"
-- [ ] Proximos pasos: LLM, Qdrant, Postgres, Redis, observabilidad
+- [ ] Si no hay claves: explicar que trazabilidad requiere credenciales reales
+- [ ] Si hay claves: mostrar trazas y tokens en Langfuse
+- [ ] Proximos pasos: tests E2E de contratos reales y hardening de prompts
 - [ ] Temporizado: 3 minutos
 
 ### SEGMENTO 8 (39-40 min): Cierre
@@ -103,7 +108,15 @@ Tener estas pestanas abiertas:
 
 ## PAYLOADS PARA COPIAR/PEGAR EN DEMO
 
-### Payload 1: Texto Normal con "Resumen"
+### Demo principal: CLI con dos imagenes
+
+```bash
+python -m src.main "C:/ruta/contrato_original.png" "C:/ruta/adenda.png" --output-file resultado.json
+```
+
+**Esperado:** JSON valido con `sections_changed`, `topics_touched`, `summary_of_the_change`
+
+### Payload API opcional: Texto Normal con "Resumen"
 ```json
 {
   "source_type": "text",
@@ -130,14 +143,14 @@ Tener estas pestanas abiertas:
 
 **Esperado:** El sistema simula descarga de URL
 
-### Request 3: Imagen escaneada (Swagger)
+### Request API opcional: Imagen escaneada (Swagger)
 
 Usar endpoint `POST /pipeline/process-image`:
 
 - `file`: selecciona una imagen JPG/PNG escaneada
 - `metadata`: `{"author":"carolina","tipo":"ocr_demo"}`
 
-**Esperado:** El sistema extrae texto OCR y ejecuta el pipeline normal.
+**Esperado:** El sistema extrae texto OCR y ejecuta el pipeline API.
 
 ### Payload 3: Texto Corto (Q&A)
 ```json
@@ -154,7 +167,12 @@ Usar endpoint `POST /pipeline/process-image`:
 
 ## COMANDOS IMPORTANTE MEMORIZADOS
 
-### Iniciar API
+### Demo principal (CLI)
+```bash
+python -m src.main "C:/ruta/contrato_original.png" "C:/ruta/adenda.png" --output-file resultado.json
+```
+
+### Iniciar API (opcional)
 ```bash
 uvicorn src.main:app --reload
 ```
