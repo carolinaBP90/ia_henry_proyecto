@@ -37,11 +37,11 @@ class ExtractionAgent:
         user_prompt = (
             "Using the provided context report and source texts, identify legal changes\n"
             "and produce a JSON object with EXACTLY this schema:\n"
-            "{\n"
+            "{{\n"
             '  "sections_changed": ["string"],\n'
             '  "topics_touched": ["string"],\n'
             '  "summary_of_the_change": "string"\n'
-            "}\n\n"
+            "}}\n\n"
             "Rules:\n"
             "1. sections_changed: concrete section titles or clause ids affected.\n"
             "2. topics_touched: legal themes (e.g., payment terms, liabilities, termination).\n"
