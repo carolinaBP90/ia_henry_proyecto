@@ -180,6 +180,7 @@ def main() -> int:
 	rendered = result.model_dump_json(indent=2, ensure_ascii=False)
 	if args.output_file:
 		output_path = Path(args.output_file)
+		output_path.parent.mkdir(parents=True, exist_ok=True)
 		output_path.write_text(rendered + "\n", encoding="utf-8")
 	else:
 		print(rendered)
