@@ -1,10 +1,9 @@
-"""Langfuse tracing helpers with graceful no-op fallback."""
+"""Langfuse tracing helpers using SDK v3 with LangChain integration."""
 
 from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass
 from typing import Any, Generator
 
 from src.config import Settings
@@ -13,23 +12,16 @@ from src.config import Settings
 LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(slots=True)
-class TraceHandle:
-    """Reference to a root trace object plus a lightweight metadata context."""
-
-    trace_obj: Any | None
-    metadata: dict[str, Any]
-
-
 class TracingService:
-    """Facade for Langfuse trace/span creation.
+    """Facade for Langfuse trace/span creation using SDK v3.
 
-    The service isolates Langfuse SDK details and keeps business logic
-    independent from observability provider internals.
+    Uses the Langfuse singleton pattern and context-manager API so that
+    LangChain CallbackHandlers automatically inherit the active observation
+    context — no manual parent linking required.
     """
 
     def __init__(self, settings: Settings) -> None:
-        """Initialize Langfuse client when enabled, otherwise no-op mode."""
+        """Initialize Langfuse singleton when enabled, otherwise no-op mode."""
         self._enabled = settings.langfuse_enabled
         self._client: Any | None = None
 
@@ -38,80 +30,98 @@ class TracingService:
             return
 
         try:
-            from langfuse import Langfuse
+            # Import AFTER env vars are loaded (dotenv already called by Settings).
+            # Initialize the global singleton; subsequent get_client() calls return it.
+            from langfuse import Langfuse, get_client
 
-            self._client = Langfuse(
+            Langfuse(
                 public_key=settings.langfuse_public_key,
                 secret_key=settings.langfuse_secret_key,
                 host=settings.langfuse_host,
             )
-        except Exception as exc:  # noqa: BLE001
+            self._client = get_client()
+            LOGGER.info("Langfuse initialized (host=%s)", settings.langfuse_host)
+        except Exception:  # noqa: BLE001
             LOGGER.exception("Failed to initialize Langfuse; falling back to no-op tracing")
             self._enabled = False
-            self._client = None
-            LOGGER.debug("Langfuse init exception: %s", exc)
 
-    def start_root_trace(self, name: str, metadata: dict[str, Any]) -> TraceHandle:
-        """Create a root trace for a contract analysis request.
+    @contextmanager
+    def root_trace(
+        self,
+        name: str,
+        input: Any | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Generator[Any | None, None, None]:
+        """Start a root trace as a context manager.
 
-        Args:
-            name: Trace name (for example, contract-analysis).
-            metadata: Request-level metadata (ids, tenant, timing context).
-
-        Returns:
-            TraceHandle that can be used to create child spans.
+        Yields the underlying span object so callers can call .update() on it.
+        All child spans and LangChain generations are automatically nested here.
         """
         if not self._enabled or self._client is None:
-            return TraceHandle(trace_obj=None, metadata=metadata)
+            yield None
+            return
 
-        trace_obj = None
-        try:
-            trace_obj = self._client.trace(name=name, metadata=metadata)
-        except Exception:  # noqa: BLE001
-            LOGGER.exception("Could not create root Langfuse trace")
-        return TraceHandle(trace_obj=trace_obj, metadata=metadata)
+        with self._client.start_as_current_observation(
+            as_type="span",
+            name=name,
+            input=input,
+            metadata=metadata,
+        ) as span:
+            yield span
 
     @contextmanager
     def span(
         self,
-        trace_handle: TraceHandle,
         name: str,
-        input_data: Any | None = None,
+        input: Any | None = None,
         metadata: dict[str, Any] | None = None,
-        output_data: dict[str, Any] | None = None,
     ) -> Generator[Any | None, None, None]:
-        """Create a child span under a root trace.
+        """Create a child span nested under the current active observation.
 
-        This context manager never raises tracing errors to caller code.
+        Must be called inside a root_trace() context (or another span() context).
         """
-        span_obj: Any | None = None
-
-        if self._enabled and trace_handle.trace_obj is not None:
-            try:
-                span_obj = trace_handle.trace_obj.span(name=name, input=input_data, metadata=metadata)
-            except Exception:  # noqa: BLE001
-                LOGGER.exception("Failed to create Langfuse span: %s", name)
-                span_obj = None
-
-        try:
-            yield span_obj
-        except Exception as exc:  # noqa: BLE001
-            error_output = dict(output_data or {})
-            error_output["error"] = str(exc)
-            self._safe_span_end(span_obj, level="ERROR", output=error_output)
-            raise
-        else:
-            self._safe_span_end(span_obj, level="DEFAULT", output=output_data or {"status": "ok"})
-
-    def _safe_span_end(self, span_obj: Any | None, level: str, output: Any) -> None:
-        """End a span safely regardless of SDK version differences."""
-        if span_obj is None:
+        if not self._enabled or self._client is None:
+            yield None
             return
 
+        with self._client.start_as_current_observation(
+            as_type="span",
+            name=name,
+            input=input,
+            metadata=metadata,
+        ) as span:
+            yield span
+
+    def get_langchain_handler(self) -> Any | None:
+        """Return a LangChain CallbackHandler for the current observation context.
+
+        Call this inside a root_trace() or span() context. The handler
+        automatically nests LangChain generations (with model name and token
+        usage) under the active Langfuse observation.
+
+        Why: Framework integrations capture model name, token usage, and latency
+        automatically — avoiding manual generation tracking.
+        """
+        if not self._enabled or self._client is None:
+            return None
+
         try:
-            if hasattr(span_obj, "end"):
-                span_obj.end(level=level, output=output)
-            elif hasattr(span_obj, "update"):
-                span_obj.update(level=level, output=output)
+            from langfuse.langchain import CallbackHandler
+
+            return CallbackHandler()
         except Exception:  # noqa: BLE001
-            LOGGER.exception("Failed to close span cleanly")
+            LOGGER.exception("Failed to create LangChain CallbackHandler")
+            return None
+
+    def shutdown(self) -> None:
+        """Flush all queued events and shut down the Langfuse client.
+
+        MUST be called before a short-lived script exits — without this,
+        queued traces are never delivered to the Langfuse API.
+        """
+        if self._enabled and self._client is not None:
+            try:
+                self._client.shutdown()
+                LOGGER.info("Langfuse shutdown complete; all traces flushed")
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Langfuse shutdown failed")

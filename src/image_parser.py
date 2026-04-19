@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
-from src.services.openai_client import OpenAIClientError, get_openai_client
+from src.services.openai_client import OpenAIClient, OpenAIClientError, get_openai_client
 
 
 OCR_PROMPT = """
@@ -49,11 +49,13 @@ def encode_contract_image_to_base64(image_path: Path) -> str:
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
-def parse_contract_image(path: str) -> str:
+def parse_contract_image(path: str, client: OpenAIClient | None = None) -> str:
     """Parse a legal contract image and return extracted OCR text.
 
     Args:
         path: Filesystem path to image file.
+        client: Optional pre-configured OpenAIClient (e.g. with Langfuse callbacks).
+            When omitted the module-level singleton is used.
 
     Returns:
         Extracted text from image.
@@ -65,5 +67,5 @@ def parse_contract_image(path: str) -> str:
     """
     image_path = validate_contract_image_path(path)
     image_base64 = encode_contract_image_to_base64(image_path)
-    client = get_openai_client()
-    return client.extract_text_from_image(image_base64=image_base64, extraction_prompt=OCR_PROMPT)
+    active_client = client or get_openai_client()
+    return active_client.extract_text_from_image(image_base64=image_base64, extraction_prompt=OCR_PROMPT)

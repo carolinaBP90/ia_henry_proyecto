@@ -28,9 +28,16 @@ class OpenAIClient:
     standardizes timeout/retry/error handling.
     """
 
-    def __init__(self, settings: Settings) -> None:
-        """Initialize model clients for vision and text tasks."""
+    def __init__(self, settings: Settings, callbacks: list[Any] | None = None) -> None:
+        """Initialize model clients for vision and text tasks.
+
+        Args:
+            settings: Runtime configuration.
+            callbacks: Optional LangChain callbacks (e.g. Langfuse CallbackHandler)
+                passed to every model invocation for automatic generation tracing.
+        """
         self._settings = settings
+        self._callbacks: list[Any] = callbacks or []
         self._last_call_metadata: dict[str, Any] = {}
         self._vision_model = ChatOpenAI(
             model=settings.openai_model_vision,
@@ -60,6 +67,7 @@ class OpenAIClient:
         Raises:
             OpenAIClientError: When model execution fails.
         """
+        config = {"callbacks": self._callbacks} if self._callbacks else {}
         try:
             response = self._vision_model.invoke(
                 [
@@ -78,7 +86,8 @@ class OpenAIClient:
                             },
                         ]
                     ),
-                ]
+                ],
+                config=config,
             )
         except Exception as exc:  # noqa: BLE001
             raise OpenAIClientError("Vision extraction failed") from exc
@@ -108,6 +117,7 @@ class OpenAIClient:
         Raises:
             OpenAIClientError: If invocation fails.
         """
+        config = {"callbacks": self._callbacks} if self._callbacks else {}
         try:
             prompt = ChatPromptTemplate.from_messages(
                 [
@@ -116,7 +126,7 @@ class OpenAIClient:
                 ]
             )
             messages = prompt.format_messages()
-            response = self._text_model.invoke(messages)
+            response = self._text_model.invoke(messages, config=config)
             output = StrOutputParser().invoke(response)
         except Exception as exc:  # noqa: BLE001
             raise OpenAIClientError("Text task failed") from exc
@@ -156,11 +166,11 @@ class OpenAIClient:
         )
         user_prompt = (
             "Repair the following JSON so that it matches this schema exactly:\n"
-            "{\n"
+            "{{\n"
             '  "sections_changed": ["string"],\n'
             '  "topics_touched": ["string"],\n'
             '  "summary_of_the_change": "string"\n'
-            "}\n\n"
+            "}}\n\n"
             "Validation errors:\n"
             f"{validation_error}\n\n"
             "Invalid JSON:\n"
@@ -178,9 +188,16 @@ class OpenAIClient:
 _OPENAI_CLIENT: OpenAIClient | None = None
 
 
-def get_openai_client() -> OpenAIClient:
-    """Return a lazily initialized singleton OpenAI client."""
+def get_openai_client(callbacks: list[Any] | None = None) -> OpenAIClient:
+    """Return an OpenAI client, optionally configured with LangChain callbacks.
+
+    When callbacks are provided a fresh instance is returned (not cached) so
+    each pipeline run gets its own Langfuse-scoped handler.
+    When no callbacks are needed the cached singleton is reused.
+    """
     global _OPENAI_CLIENT
+    if callbacks:
+        return OpenAIClient(settings=get_settings(), callbacks=callbacks)
     if _OPENAI_CLIENT is None:
         _OPENAI_CLIENT = OpenAIClient(settings=get_settings())
     return _OPENAI_CLIENT

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -37,121 +36,70 @@ def run_contract_analysis(original_image_path: str, amendment_image_path: str) -
 	"""Execute full contract comparison pipeline required by the challenge."""
 	runtime_settings = get_runtime_settings()
 	tracing = TracingService(runtime_settings)
-	llm_client = get_openai_client()
 
 	original_path = validate_contract_image_path(original_image_path)
 	amendment_path = validate_contract_image_path(amendment_image_path)
 
-	trace = tracing.start_root_trace(
-		name="contract-analysis",
-		metadata={
-			"original_image_path": str(original_path),
-			"amendment_image_path": str(amendment_path),
-			"started_at": datetime.now(UTC).isoformat(),
-		},
-	)
-
-	original_span_output: dict[str, object] = {}
-	with tracing.span(
-		trace,
-		"parse_original_contract",
-		input_data={"path": str(original_path)},
-		metadata={"stage": "ocr", "document_role": "original"},
-		output_data=original_span_output,
-	):
-		original_text = parse_contract_image(str(original_path))
-		original_span_output.update(
-			{
-				"status": "ok",
-				"output_preview": original_text[:800],
-				"output_chars": len(original_text),
-				"llm_call": llm_client.get_last_call_metadata(),
-			}
-		)
-
-	amendment_span_output: dict[str, object] = {}
-	with tracing.span(
-		trace,
-		"parse_amendment_contract",
-		input_data={"path": str(amendment_path)},
-		metadata={"stage": "ocr", "document_role": "amendment"},
-		output_data=amendment_span_output,
-	):
-		amendment_text = parse_contract_image(str(amendment_path))
-		amendment_span_output.update(
-			{
-				"status": "ok",
-				"output_preview": amendment_text[:800],
-				"output_chars": len(amendment_text),
-				"llm_call": llm_client.get_last_call_metadata(),
-			}
-		)
-
-	contextualization_agent = ContextualizationAgent(llm_client=llm_client)
-	context_span_output: dict[str, object] = {}
-	with tracing.span(
-		trace,
-		"contextualization_agent",
-		input_data={
-			"original_text_chars": len(original_text),
-			"amendment_text_chars": len(amendment_text),
-		},
-		metadata={"stage": "agent", "agent": "ContextualizationAgent"},
-		output_data=context_span_output,
-	):
-		context_report = contextualization_agent.run(
-			original_text=original_text,
-			amendment_text=amendment_text,
-		)
-		context_span_output.update(
-			{
-				"status": "ok",
-				"output_preview": context_report[:800],
-				"output_chars": len(context_report),
-				"llm_call": llm_client.get_last_call_metadata(),
-			}
-		)
-
-	extraction_agent = ExtractionAgent(llm_client=llm_client)
-	extraction_span_output: dict[str, object] = {}
-	with tracing.span(
-		trace,
-		"extraction_agent",
-		input_data={
-			"context_report_chars": len(context_report),
-			"original_text_chars": len(original_text),
-			"amendment_text_chars": len(amendment_text),
-		},
-		metadata={"stage": "agent", "agent": "ExtractionAgent"},
-		output_data=extraction_span_output,
-	):
-		extraction_payload = extraction_agent.run(
-			context_report=context_report,
-			original_text=original_text,
-			amendment_text=amendment_text,
-		)
-		extraction_span_output.update(
-			{
-				"status": "ok",
-				"output": extraction_payload,
-				"llm_call": llm_client.get_last_call_metadata(),
-			}
-		)
-
 	try:
-		return ContractChangeOutput.model_validate(extraction_payload)
-	except ValidationError as exc:
-		repaired_payload = extraction_payload
-		for _ in range(runtime_settings.json_repair_max_attempts):
-			repaired_payload = llm_client.repair_json_payload(
-				invalid_payload=json.dumps(repaired_payload, ensure_ascii=False),
-				validation_error=str(exc),
-			)
+		with tracing.root_trace(
+			name="contract-analysis",
+			input={
+				"original_image_path": str(original_path),
+				"amendment_image_path": str(amendment_path),
+			},
+		) as root_span:
+			# Get a LangChain callback handler scoped to this root trace so all
+			# LLM generations (model name, token usage, latency) are captured
+			# automatically as nested observations — no manual tracking needed.
+			handler = tracing.get_langchain_handler()
+			llm_client = get_openai_client(callbacks=[handler] if handler else [])
+
+			with tracing.span("parse_original_contract", metadata={"stage": "ocr", "document_role": "original"}):
+				original_text = parse_contract_image(str(original_path), client=llm_client)
+
+			with tracing.span("parse_amendment_contract", metadata={"stage": "ocr", "document_role": "amendment"}):
+				amendment_text = parse_contract_image(str(amendment_path), client=llm_client)
+
+			contextualization_agent = ContextualizationAgent(llm_client=llm_client)
+			with tracing.span("contextualization_agent", metadata={"stage": "agent", "agent": "ContextualizationAgent"}):
+				context_report = contextualization_agent.run(
+					original_text=original_text,
+					amendment_text=amendment_text,
+				)
+
+			extraction_agent = ExtractionAgent(llm_client=llm_client)
+			with tracing.span("extraction_agent", metadata={"stage": "agent", "agent": "ExtractionAgent"}):
+				extraction_payload = extraction_agent.run(
+					context_report=context_report,
+					original_text=original_text,
+					amendment_text=amendment_text,
+				)
+
 			try:
-				return ContractChangeOutput.model_validate(repaired_payload)
-			except ValidationError as retry_exc:
-				exc = retry_exc
-		raise
+				result = ContractChangeOutput.model_validate(extraction_payload)
+			except ValidationError as exc:
+				repaired_payload = extraction_payload
+				for _ in range(runtime_settings.json_repair_max_attempts):
+					repaired_payload = llm_client.repair_json_payload(
+						invalid_payload=json.dumps(repaired_payload, ensure_ascii=False),
+						validation_error=str(exc),
+					)
+					try:
+						result = ContractChangeOutput.model_validate(repaired_payload)
+						break
+					except ValidationError as retry_exc:
+						exc = retry_exc
+				else:
+					raise
+
+			if root_span is not None:
+				root_span.update(output=result.model_dump())
+
+			return result
+	finally:
+		# CRITICAL: flush all queued Langfuse events before the process exits.
+		# Without this, traces are never delivered from the background queue.
+		tracing.shutdown()
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
