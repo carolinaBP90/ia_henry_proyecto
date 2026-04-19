@@ -54,26 +54,42 @@ def run_contract_analysis(original_image_path: str, amendment_image_path: str) -
 			handler = tracing.get_langchain_handler()
 			llm_client = get_openai_client(callbacks=[handler] if handler else [])
 
-			with tracing.span("parse_original_contract", metadata={"stage": "ocr", "document_role": "original"}):
+			with tracing.span("parse_original_contract", input={"path": str(original_path)}, metadata={"stage": "ocr", "document_role": "original"}) as ocr_orig_span:
 				original_text = parse_contract_image(str(original_path), client=llm_client)
+				if ocr_orig_span:
+					ocr_orig_span.update(output={"chars": len(original_text), "preview": original_text[:300]})
 
-			with tracing.span("parse_amendment_contract", metadata={"stage": "ocr", "document_role": "amendment"}):
+			with tracing.span("parse_amendment_contract", input={"path": str(amendment_path)}, metadata={"stage": "ocr", "document_role": "amendment"}) as ocr_amend_span:
 				amendment_text = parse_contract_image(str(amendment_path), client=llm_client)
+				if ocr_amend_span:
+					ocr_amend_span.update(output={"chars": len(amendment_text), "preview": amendment_text[:300]})
 
 			contextualization_agent = ContextualizationAgent(llm_client=llm_client)
-			with tracing.span("contextualization_agent", metadata={"stage": "agent", "agent": "ContextualizationAgent"}):
+			with tracing.span(
+				"contextualization_agent",
+				input={"original_chars": len(original_text), "amendment_chars": len(amendment_text)},
+				metadata={"stage": "agent", "agent": "ContextualizationAgent"},
+			) as ctx_span:
 				context_report = contextualization_agent.run(
 					original_text=original_text,
 					amendment_text=amendment_text,
 				)
+				if ctx_span:
+					ctx_span.update(output={"chars": len(context_report), "preview": context_report[:300]})
 
 			extraction_agent = ExtractionAgent(llm_client=llm_client)
-			with tracing.span("extraction_agent", metadata={"stage": "agent", "agent": "ExtractionAgent"}):
+			with tracing.span(
+				"extraction_agent",
+				input={"context_chars": len(context_report), "original_chars": len(original_text), "amendment_chars": len(amendment_text)},
+				metadata={"stage": "agent", "agent": "ExtractionAgent"},
+			) as ext_span:
 				extraction_payload = extraction_agent.run(
 					context_report=context_report,
 					original_text=original_text,
 					amendment_text=amendment_text,
 				)
+				if ext_span:
+					ext_span.update(output=extraction_payload)
 
 			try:
 				result = ContractChangeOutput.model_validate(extraction_payload)

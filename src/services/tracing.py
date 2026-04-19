@@ -64,9 +64,13 @@ class TracingService:
         with self._client.start_as_current_observation(
             as_type="span",
             name=name,
-            input=input,
             metadata=metadata,
         ) as span:
+            # In Langfuse SDK v3, input must be set via span.update() to appear
+            # in the UI — passing input= to start_as_current_observation does not
+            # populate the trace-level Input field reliably.
+            if input is not None:
+                span.update(input=input)
             yield span
 
     @contextmanager
@@ -87,9 +91,10 @@ class TracingService:
         with self._client.start_as_current_observation(
             as_type="span",
             name=name,
-            input=input,
             metadata=metadata,
         ) as span:
+            if input is not None:
+                span.update(input=input)
             yield span
 
     def get_langchain_handler(self) -> Any | None:
